@@ -1,0 +1,231 @@
+modules:
+  # --- The product surface ---------------------------------------------------
+  # The same scoring logic the tools use, rendered inside Jira so a release
+  # manager can see the verdict without an AI client. `render: native` means the
+  # resource is UI Kit (React) code, not a custom-UI bundle.
+  jira:projectPage:
+    - key: ship-confidence-page
+      title: Ship Confidence
+      resource: main
+      render: native
+      resolver:
+        function: pageResolver
+
+  # --- The MCP surface -------------------------------------------------------
+  # One rovo:mcp module per app. `name` is the MCP server name clients display
+  # and is capped at 30 characters. `tools` are action keys, not function keys.
+  rovo:mcp:
+    - key: ship-confidence-mcp
+      name: Ship Confidence
+      tools:
+        - get-release-readiness
+        - list-open-blockers
+        - get-release-risk-factors
+        - explain-blocker
+        - draft-release-notes
+        - compare-releases
+      resources:
+        - key: confidence-rubric
+          path: resources/rubric.md
+
+  # --- Tools -----------------------------------------------------------------
+  # Every tool is read-only (actionVerb: GET) so it can also be invoked by
+  # automation-triggered agents. Descriptions are written for a model choosing
+  # between tools: they state what the tool answers, not how it is implemented.
+  action:
+    - key: get-release-readiness
+      name: Get release readiness
+      function: getReleaseReadiness
+      actionVerb: GET
+      description: >
+        Score whether a Jira version is safe to release. Correlates open blockers,
+        unfinished work items, unresolved review comments, linked pull requests
+        that never merged, and failed deployments. Returns a verdict, a 0-100
+        score, the risk factors behind it, and which data sources were actually
+        readable for the calling user.
+      inputs:
+        projectKey:
+          title: Project key
+          type: string
+          required: true
+          description: Jira project key, for example SHIP.
+        versionName:
+          title: Version name
+          type: string
+          required: true
+          description: Exact Jira version name, for example 2.4.0.
+
+    - key: list-open-blockers
+      name: List open blockers
+      function: listOpenBlockers
+      actionVerb: GET
+      description: >
+        List the individual blockers currently holding back a Jira version, each
+        with its work item key, owner, why it blocks, and a link. Use this after
+        get-release-readiness when the user asks what specifically is in the way.
+      inputs:
+        projectKey:
+          title: Project key
+          type: string
+          required: true
+          description: Jira project key, for example SHIP.
+        versionName:
+          title: Version name
+          type: string
+          required: true
+          description: Exact Jira version name, for example 2.4.0.
+
+    - key: get-release-risk-factors
+      name: Get release risk factors
+      function: getReleaseRiskFactors
+      actionVerb: GET
+      description: >
+        Return every risk signal detected for a Jira version, ranked by severity,
+        including warnings that are not hard blockers. Use this to explain why a
+        readiness score dropped or to compare two releases.
+      inputs:
+        projectKey:
+          title: Project key
+          type: string
+          required: true
+          description: Jira project key, for example SHIP.
+        versionName:
+          title: Version name
+          type: string
+          required: true
+          description: Exact Jira version name, for example 2.4.0.
+
+    - key: explain-blocker
+      name: Explain a blocker
+      function: explainBlocker
+      actionVerb: GET
+      description: >
+        Explain a single blocker in depth: why it blocks, the work item it belongs
+        to, its linked pull requests and deployments, and its recent review
+        comments. Use this when the user asks why one specific work item is
+        blocking a release. Requires either a work item key or a blocker id.
+      inputs:
+        projectKey:
+          title: Project key
+          type: string
+          required: true
+          description: Jira project key, for example SHIP.
+        versionName:
+          title: Version name
+          type: string
+          required: true
+          description: Exact Jira version name, for example 2.4.0.
+        workItemKey:
+          title: Work item key
+          type: string
+          required: false
+          description: Key of the blocking work item, for example SHIP-442.
+        blockerId:
+          title: Blocker id
+          type: string
+          required: false
+          description: Blocker identifier as returned by list-open-blockers, for example blocked-work-item:SHIP-442.
+
+    - key: draft-release-notes
+      name: Draft release notes
+      function: draftReleaseNotes
+      actionVerb: GET
+      description: >
+        Draft release notes for a Jira version from its completed work items,
+        grouped by issue type, with unfinished and blocked items left out. Returns
+        markdown the user can paste into a changelog or a page.
+      inputs:
+        projectKey:
+          title: Project key
+          type: string
+          required: true
+          description: Jira project key, for example SHIP.
+        versionName:
+          title: Version name
+          type: string
+          required: true
+          description: Exact Jira version name, for example 2.4.0.
+
+    - key: compare-releases
+      name: Compare two releases
+      function: compareReleases
+      actionVerb: GET
+      description: >
+        Explain why one Jira version scores worse or better than another. Reads
+        both releases, diffs their risk factors, and reports which problems are
+        new, which are fixed, and which persisted. Use this when the user asks
+        what changed between two releases rather than whether one is ready.
+      inputs:
+        projectKey:
+          title: Project key
+          type: string
+          required: true
+          description: Jira project key, for example SHIP.
+        versionName:
+          title: Version name
+          type: string
+          required: true
+          description: Exact Jira version name of the release being judged, for example 2.5.0.
+        baselineVersionName:
+          title: Baseline version name
+          type: string
+          required: true
+          description: Exact Jira version name to compare against, for example 2.4.0.
+
+  # Instructions an agent can load to use the tools well. Shipped as a skill so
+  # third-party agents can reuse it even when they cannot see this manifest.
+  rovo:skill:
+    - key: ship-confidence-skill
+      source:
+        dir: skills/ship-confidence
+      dependencies:
+        tools:
+          - get-release-readiness
+          - list-open-blockers
+          - get-release-risk-factors
+          - explain-blocker
+          - draft-release-notes
+          - compare-releases
+
+  # Function keys are capped at 23 characters by the platform.
+  function:
+    - key: getReleaseReadiness
+      handler: actions/get-release-readiness.handler
+    - key: listOpenBlockers
+      handler: actions/list-open-blockers.handler
+    - key: getReleaseRiskFactors
+      handler: actions/get-release-risk-factors.handler
+    - key: explainBlocker
+      handler: actions/explain-blocker.handler
+    - key: draftReleaseNotes
+      handler: actions/draft-release-notes.handler
+    - key: compareReleases
+      handler: actions/compare-releases.handler
+    # Backs the project page: lists versions and scores one of them.
+    - key: pageResolver
+      handler: resolvers/page.handler
+
+resources:
+  - key: main
+    path: src/frontend/app.tsx
+
+# Teamwork Graph scopes are per object type: read:graph:<object>:<product>.
+# Missing scopes do not error, they return empty results, so the app treats
+# coverage as data (see src/graph/coverage.ts).
+permissions:
+  scopes:
+    - read:graph:issue:jira
+    - read:graph:project:jira
+    - read:graph:user:atlassian
+    - read:graph:pull-request:external
+    # Only for listing a project's versions in the page's release picker; the
+    # scoring itself reads nothing but the Teamwork Graph.
+    - read:jira-work
+
+app:
+  runtime:
+    name: nodejs24.x
+    memoryMB: 256
+    architecture: arm64
+  # Replace with the id produced by `forge register` before deploying.
+  id: ari:cloud:ecosystem::app/00000000-0000-0000-0000-000000000000

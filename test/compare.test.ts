@@ -85,16 +85,9 @@ describe("compare-releases", () => {
     const versions = new Set(
       seen
         .filter((call) => call.source === "workItems")
-        .map((call) =>
-          String((call.variables.queryParams as { versionAri?: unknown } | undefined)?.versionAri),
-        ),
+        .map((call) => String(call.variables.versionName)),
     );
-    expect(versions).toEqual(
-      new Set([
-        "ari:cloud:jira:cloud-1:version/10001",
-        "ari:cloud:jira:cloud-1:version/10000",
-      ]),
-    );
+    expect(versions).toEqual(new Set(["2.5.0", "2.4.0"]));
   });
 
   it("names what the baseline had and the candidate fixed", async () => {

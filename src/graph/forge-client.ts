@@ -1,6 +1,7 @@
-import api from "@forge/api";
+import api, { route } from "@forge/api";
 
-import type { GraphResult, TeamworkGraphClient } from "./client";
+import type { GraphResult, ReleaseScopeResult, TeamworkGraphClient } from "./client";
+import { issueAri } from "./queries";
 
 /**
  * Forge adapter.
@@ -25,6 +26,69 @@ export function createForgeGraphClient(): TeamworkGraphClient {
 
       return normalise(await unwrap(raw));
     },
+
+    async searchRelease(
+      projectKey: string,
+      versionName: string,
+      cloudId: string | undefined,
+    ): Promise<ReleaseScopeResult> {
+      const jql = `project = "${escapeJql(projectKey)}" AND fixVersion = "${escapeJql(versionName)}" ORDER BY updated DESC`;
+
+      try {
+        const response = await api.asUser().requestJira(route`/rest/api/3/search/jql`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({
+            jql,
+            maxResults: 25,
+            fields: ["summary", "status", "issuetype", "resolutiondate"],
+          }),
+        });
+
+        if (!response.ok) {
+          const body = await response.text();
+          return {
+            nodes: [],
+            error: { message: `Jira search returned ${response.status}: ${body.slice(0, 160)}` },
+            notPermitted: response.status === 401 || response.status === 403,
+          };
+        }
+
+        const body = (await response.json()) as { issues?: unknown };
+        return { nodes: (Array.isArray(body.issues) ? body.issues : []).map((issue) => toNode(issue, cloudId)) };
+      } catch (error) {
+        return {
+          nodes: [],
+          error: { message: error instanceof Error ? error.message : String(error) },
+        };
+      }
+    },
+  };
+}
+
+/** JQL strings are quoted, so a quote in a name would end the value early. */
+function escapeJql(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+/**
+ * Present a Jira issue the way the graph presents a work item, so one mapper serves
+ * both sources. The ARI is what the per-item graph queries take as their id.
+ */
+function toNode(issue: unknown, cloudId: string | undefined): Record<string, unknown> {
+  const record = issue && typeof issue === "object" ? (issue as Record<string, unknown>) : {};
+  const fields = record.fields && typeof record.fields === "object"
+    ? (record.fields as Record<string, unknown>)
+    : {};
+  const id = record.id === undefined || record.id === null ? undefined : String(record.id);
+
+  return {
+    ...(id !== undefined && cloudId !== undefined ? { id: issueAri(cloudId, id) } : {}),
+    key: record.key,
+    summary: fields.summary,
+    issueType: fields.issuetype,
+    status: fields.status,
+    resolvedAt: fields.resolutiondate,
   };
 }
 

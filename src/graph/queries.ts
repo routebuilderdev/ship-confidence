@@ -5,9 +5,10 @@
  * (`GET https://<site>/gateway/api/graphql/twg/schema`) rather than the docs prose,
  * because the two disagreed twice. Notable, verified facts:
  *
- * - `JiraWorkItem` has NO fix-version field. Version membership is a *relationship*
- *   (`jira_version_links_jira_work_item`), reachable only through a persisted
- *   Cypher query — see `PERSISTED_RELEASE_SCOPE` below.
+ * - `JiraWorkItem` has NO fix-version field. Version membership is a relationship in
+ *   the graph, reachable only through a Cypher query that must be registered from a
+ *   browser session, so release scope comes from Jira search instead and the graph
+ *   is used for everything per-item.
  * - Curated queries take ARIs: `jiraWorkItemComments(id:)`, `jiraWorkItemLinkedExternal*` etc.
  * - `first` never exceeds 25.
  * - Result nodes are unions, so every selection uses an inline fragment.
@@ -24,29 +25,9 @@ export const DEFAULT_PAGE_SIZE = 25;
  */
 export const ENRICHED_ITEM_LIMIT = 8;
 
-/**
- * The Cypher registered once against this app (POST /gateway/api/twg/cypher-queries).
- *
- * Nodes are matched on `ari`, which is the property the graph documents for
- * filtering — object fields such as a version's name are not query properties, so
- * `{name: $versionName}` would fail validation. This is the published traversal for
- * "the work items of one release", with the version supplied as an argument.
- * Nothing here is sent as query text at runtime.
- */
-export const PERSISTED_RELEASE_SCOPE =
-  "MATCH (version:JiraVersion {ari: $versionAri})-[:jira_version_links_jira_work_item]->(item:JiraWorkItem) RETURN item";
-
-/** Parameters declared when registering the query above. */
-export const PERSISTED_RELEASE_SCOPE_PARAMS = [
-  { name: "versionAri", type: "ARI", required: true },
-] as const;
-
-/**
- * Graph id of a release version. Jira object ARIs carry the site's cloud id in the
- * tenant slot, so this is the only identity the graph accepts for a version.
- */
-export function versionAri(cloudId: string, versionId: string): string {
-  return `ari:cloud:jira:${cloudId}:version/${versionId}`;
+/** Graph id of a work item, built from what Jira REST reports. */
+export function issueAri(cloudId: string, issueId: string): string {
+  return `ari:cloud:jira:${cloudId}:issue/${issueId}`;
 }
 
 export function clampPageSize(requested?: number): number {
@@ -55,41 +36,6 @@ export function clampPageSize(requested?: number): number {
 }
 
 export const QUERIES = {
-  // NOTE: the release-scope document is not here — it lives in
-  // `PERSISTED_RELEASE_SCOPE`, executed by key through `QUERIES.releaseScope`.
-  /** Executes the registered release-scope query. */
-  releaseScope: `
-    query ReleaseScope($queryKey: String!, $queryParams: CypherRequestParams, $first: Int!) {
-      customQuery(queryKey: $queryKey, queryParams: $queryParams, first: $first) {
-        edges {
-          node {
-            columns {
-              key
-              value {
-                ... on CypherQueryResultNode {
-                  id
-                  data {
-                    ... on JiraWorkItem {
-                      id
-                      key
-                      summary
-                      issueType { name }
-                      status { name statusCategory { key } }
-                      webUrl
-                      createdAt
-                      resolvedAt
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-        pageInfo { hasNextPage endCursor }
-      }
-    }
-  `,
-
   /**
    * Pull requests, deployments, builds and designs linked to one work item, in a
    * single call. Splitting these into separate curated queries doubled the round

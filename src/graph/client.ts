@@ -14,8 +14,31 @@ export interface GraphResult<T> {
   errors: GraphError[];
 }
 
+export interface ReleaseScopeResult {
+  /** Work items in the release, in the shape the graph returns them. */
+  nodes: unknown[];
+  /** Set when the scope could not be read at all. */
+  error?: GraphError;
+  /** True when the error was a permission refusal rather than a failure. */
+  notPermitted?: boolean;
+}
+
 export interface TeamworkGraphClient {
   request<T>(document: string, variables: Record<string, unknown>): Promise<GraphResult<T>>;
+  /**
+   * Which work items belong to one release version.
+   *
+   * This is the one question the graph cannot answer for us: a version's membership
+   * exists only as a relationship, reachable through a Cypher query that has to be
+   * registered in a browser session (an app identity is refused with `scope does not
+   * match`). Jira's own search answers it directly, and everything else — pull
+   * requests, deployments, comments — still comes from the graph.
+   */
+  searchRelease(
+    projectKey: string,
+    versionName: string,
+    cloudId: string | undefined,
+  ): Promise<ReleaseScopeResult>;
 }
 
 /** Per-query budget. The action itself has 55s; leave room to format and return. */

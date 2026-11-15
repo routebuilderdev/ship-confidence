@@ -70,28 +70,34 @@ function routeOf(document: string): keyof Routes | undefined {
 }
 
 /**
- * Release scope is aimed with a version ARI, mirroring the real graph. The ids come
- * from the `@forge/api` stub in `test/setup.ts`.
+ * Release scope now comes from Jira search, so the fake records the same call the
+ * real client makes and serves the fixtures for that version.
  */
-const VERSION_BY_ARI: Record<string, string> = {
-  "ari:cloud:jira:cloud-1:version/10000": "2.4.0",
-  "ari:cloud:jira:cloud-1:version/10001": "2.5.0",
-};
-
-function versionOf(source: keyof Routes, variables: Record<string, unknown>): unknown {
-  if (source === "workItems") {
-    const params = variables.queryParams;
-    const ari =
-      typeof params === "object" && params !== null
-        ? (params as Record<string, unknown>).versionAri
-        : undefined;
-    return typeof ari === "string" ? VERSION_BY_ARI[ari] : undefined;
-  }
+function versionOf(variables: Record<string, unknown>): unknown {
   return variables.versionName;
 }
 
 export function createFakeClient(routes: Routes = {}): TeamworkGraphClient {
   return {
+    async searchRelease(projectKey, versionName, _cloudId) {
+      routes.seen?.push({ source: "workItems", variables: { projectKey, versionName } });
+
+      const active = routes.byVersion?.[versionName] ?? routes;
+      const message = active.errors?.workItems;
+      if (message) {
+        return { nodes: [], error: { message }, notPermitted: true };
+      }
+
+      // A work item needs a graph id for the per-item queries, and fixtures should
+      // not have to invent ARIs.
+      const nodes = (active.workItems ?? []).map((node, index) => ({
+        id: `ari:cloud:jira::issue/${index}`,
+        ...(node as object),
+      }));
+
+      return { nodes };
+    },
+
     async request<T>(
       document: string,
       variables: Record<string, unknown>,
@@ -103,7 +109,7 @@ export function createFakeClient(routes: Routes = {}): TeamworkGraphClient {
 
       routes.seen?.push({ source, variables });
 
-      const versionName = versionOf(source, variables);
+      const versionName = versionOf(variables);
       const active =
         (typeof versionName === "string" ? routes.byVersion?.[versionName] : undefined) ?? routes;
 

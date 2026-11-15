@@ -17,13 +17,11 @@ import { clampPageSize, ENRICHED_ITEM_LIMIT, QUERIES } from "./queries";
 export interface LoadOptions {
   projectKey: string;
   versionName: string;
-  /** Graph ARI of the release version. Required when a query key is configured. */
-  versionAri?: string;
+  /** Site cloud id, needed to build the work-item ARIs the graph takes. */
+  cloudId?: string;
   pageSize?: number;
   /** Account id of the caller, used only by the access probe. */
   accountId?: string;
-  /** Registered persisted-query key for release scoping. */
-  queryKey?: string;
 }
 
 export interface LoadedContext {
@@ -32,14 +30,14 @@ export interface LoadedContext {
   warnings: string[];
 }
 
-type Mapper<T> = (node: unknown) => T | undefined;
-
 /**
  * Load a release in two phases.
  *
- * Phase 1 asks the graph which work items belong to the release version, through a
- * persisted Cypher query — the only way to traverse version → work item, because
- * `JiraWorkItem` carries no fix-version field.
+ * Phase 1 asks which work items belong to the release version. That comes from Jira
+ * search: in the graph, version membership is a relationship behind a Cypher query
+ * that must be registered from a browser session, and a Forge app cannot do that for
+ * itself (`scope does not match`). So the graph is used for everything it can do
+ * without setup, and Jira for the one thing it cannot.
  *
  * Phase 2 enriches each item with its development artefacts (pull requests,
  * deployments) and recent comments. Those are per-item curated queries, so the
@@ -54,48 +52,7 @@ export async function loadReleaseContext(
   const warnings: string[] = [];
   const empty = emptyContext(options);
 
-  // Without a registered query there is no way to ask the graph about a release.
-  // Saying so is better than reporting an empty but "successful" read.
-  if (!options.queryKey) {
-    return {
-      ...empty,
-      coverage: [
-        entry(
-          "workItems",
-          "unavailable",
-          "No release-scope query is registered for this app yet, so the Teamwork Graph cannot be asked which work items belong to a version.",
-        ),
-      ],
-    };
-  }
-
-  // The graph filters nodes on `ari` only, so without one the query cannot be aimed
-  // at a release. That is a resolution failure, not an empty release.
-  if (!options.versionAri) {
-    return {
-      ...empty,
-      coverage: [
-        entry(
-          "workItems",
-          "unavailable",
-          `Release ${options.versionName} could not be found in project ${options.projectKey}, so the Teamwork Graph was never asked which work items belong to it.`,
-        ),
-      ],
-    };
-  }
-
-  const scope = await run(
-    client,
-    "workItems",
-    QUERIES.releaseScope,
-    {
-      queryKey: options.queryKey,
-      queryParams: { versionAri: options.versionAri },
-      first,
-    },
-    normaliseWorkItem,
-    cypherNodes,
-  );
+  const scope = await readScope(client, options, first);
 
   if (scope.entry.status === "unavailable") {
     return { ...empty, coverage: [scope.entry] };
@@ -153,6 +110,41 @@ export async function loadReleaseContext(
     ],
     warnings,
   };
+}
+
+/**
+ * Read the release's work items. A refusal and a failure are reported differently:
+ * one means the user may not see this project, the other means the read broke, and
+ * calling either of them "empty" would turn an unknown release into an all-clear.
+ */
+async function readScope(
+  client: TeamworkGraphClient,
+  options: LoadOptions,
+  first: number,
+): Promise<SourceRun<WorkItem>> {
+  const result = await client.searchRelease(
+    options.projectKey,
+    options.versionName,
+    options.cloudId,
+  );
+
+  if (result.error) {
+    return {
+      items: [],
+      entry: entry(
+        "workItems",
+        result.notPermitted ? "not_permitted" : "unavailable",
+        result.error.message,
+      ),
+    };
+  }
+
+  const items = result.nodes
+    .map(normaliseWorkItem)
+    .filter((item): item is WorkItem => item !== undefined)
+    .slice(0, first);
+
+  return { items, entry: entry("workItems", items.length > 0 ? "read" : "empty") };
 }
 
 interface ItemDetail {
@@ -296,61 +288,6 @@ async function resolveEmpty(
 interface SourceRun<T> {
   items: T[];
   entry: CoverageEntry;
-}
-
-async function run<T>(
-  client: TeamworkGraphClient,
-  source: SourceId,
-  document: string,
-  variables: Record<string, unknown>,
-  map: Mapper<T>,
-  extract: (payload: unknown) => unknown[] = edgesOf,
-): Promise<SourceRun<T>> {
-  try {
-    const result = await withTimeout(client.request<unknown>(document, variables), source);
-
-    if (result.errors.length > 0) {
-      const status = looksLikePermissionFailure(result.errors) ? "not_permitted" : "unavailable";
-      return {
-        items: [],
-        entry: entry(source, status, result.errors[0]?.message ?? "query failed"),
-      };
-    }
-
-    // fallow-ignore-next-line complexity
-    const items = extract(result.data)
-      .map(map)
-      .filter((item): item is T => item !== undefined);
-
-    return { items, entry: entry(source, items.length > 0 ? "read" : "empty") };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "unknown error";
-    return { items: [], entry: entry(source, "unavailable", message) };
-  }
-}
-
-/**
- * Pull the hydrated nodes out of a Cypher connection.
- *
- * Shape: `customQuery.edges[].node.columns[].value`, where a selected object column
- * is a `CypherQueryResultNode` carrying `data`.
- */
-export function cypherNodes(payload: unknown): unknown[] {
-  // `edgesOf` walks the top-level payload looking for a connection, so it is handed
-  // the payload itself rather than the `customQuery` field.
-  const rows = edgesOf(payload);
-
-  return rows.flatMap((row) => {
-    const columns = asArray(asRecord(row).columns);
-    for (const column of columns) {
-      const value = asRecord(asRecord(column).value);
-      if (asString(value.__typename) === "CypherQueryResultNode") {
-        const data = asRecord(value.data);
-        return data.__typename === undefined ? [] : [data];
-      }
-    }
-    return [];
-  });
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

@@ -69,11 +69,8 @@ describe("get-release-readiness", () => {
     await answer({ ...healthyRoutes(), seen });
 
     const scope = seen.find((call) => call.source === "workItems");
-    expect(scope?.variables.queryKey).toBe("test-query-key");
-    // Versions are matched on their graph ARI, never on their name.
-    expect(scope?.variables.queryParams).toEqual({
-      versionAri: "ari:cloud:jira:cloud-1:version/10000",
-    });
+    // Scope is read from Jira search with the project and version the user named.
+    expect(scope?.variables).toEqual({ projectKey: "SHIP", versionName: "2.4.0" });
   });
 
   it("asks for missing inputs instead of guessing them", async () => {

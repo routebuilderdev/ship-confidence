@@ -5,7 +5,6 @@ import { dirname, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 
-import { APP_ARI } from "../src/graph/register";
 
 /**
  * The manifest is the only place the tool surface is declared, and Forge gives no
@@ -189,13 +188,7 @@ describe("manifest", () => {
   });
 });
 
-describe("query registration identity", () => {
-  it("registers the persisted query against the app that owns the manifest", () => {
-    const appId = (manifest as unknown as { app: { id: string } }).app.id;
-    // A mismatch would register the query to an app that can never execute it.
-    expect(appId).toBe(APP_ARI);
-  });
-
+describe("graph scopes", () => {
   it("declares the object scopes the graph queries read", () => {
     const scopes = (manifest as unknown as { permissions: { scopes: string[] } }).permissions.scopes;
     for (const scope of [

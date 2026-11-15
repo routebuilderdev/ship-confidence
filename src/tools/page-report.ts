@@ -1,8 +1,6 @@
 import { scoreReadiness } from "../domain/readiness";
 import { toPageView, type PageView } from "../frontend/view";
-import { resolveQueryKey } from "../graph/config";
 import { loadReleaseContext } from "../graph/load";
-import { resolveVersionAri } from "../graph/versions";
 import type { Deps } from "./release-runner";
 
 /**
@@ -50,16 +48,12 @@ export async function buildPageView(
   deps: Deps,
   request: { projectKey: string; versionName: string; accountId?: string; cloudId?: string },
 ): Promise<PageView> {
-  const queryKey = await resolveQueryKey();
-  const lookup = deps.resolveVersionAri ?? resolveVersionAri;
-  const versionAri = await lookup(request.projectKey, request.versionName, request.cloudId);
 
   const loaded = await loadReleaseContext(deps.client, {
     projectKey: request.projectKey,
     versionName: request.versionName,
     ...(request.accountId === undefined ? {} : { accountId: request.accountId }),
-    ...(queryKey === undefined ? {} : { queryKey }),
-    ...(versionAri === undefined ? {} : { versionAri }),
+    ...(request.cloudId === undefined ? {} : { cloudId: request.cloudId }),
   });
 
   const report = scoreReadiness(loaded.context);

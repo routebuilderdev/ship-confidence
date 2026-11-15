@@ -1,10 +1,8 @@
 import type { TeamworkGraphClient } from "../graph/client";
-import { resolveQueryKey } from "../graph/config";
 import { caveat } from "../graph/coverage";
 import { createForgeGraphClient } from "../graph/forge-client";
 import type { LoadedContext } from "../graph/load";
 import { loadReleaseContext } from "../graph/load";
-import { resolveVersionAri } from "../graph/versions";
 import { failureResult, type ToolResult } from "./result";
 import { parseReleaseRequest, type ReleaseRequest } from "./context";
 
@@ -16,31 +14,13 @@ import { parseReleaseRequest, type ReleaseRequest } from "./context";
  */
 export interface Deps {
   client: TeamworkGraphClient;
-  /**
-   * Turns a project key + version name into a graph ARI. Injected so every layer
-   * above stays testable without Jira REST, and defaulted to the real lookup.
-   */
-  resolveVersionAri?: (
-    projectKey: string,
-    versionName: string,
-    cloudId: string | undefined,
-  ) => Promise<string | undefined>;
 }
 
 export function defaultDeps(): Deps {
-  return { client: createForgeGraphClient(), resolveVersionAri };
+  return { client: createForgeGraphClient() };
 }
 
 export type Answer = (loaded: LoadedContext, request: ReleaseRequest) => ToolResult;
-
-/** Resolve the release's graph id, through the injected lookup when one is given. */
-export async function resolveAri(
-  deps: Deps,
-  request: Pick<ReleaseRequest, "projectKey" | "versionName" | "context">,
-): Promise<string | undefined> {
-  const lookup = deps.resolveVersionAri ?? resolveVersionAri;
-  return lookup(request.projectKey, request.versionName, request.context.cloudId);
-}
 
 export async function answerReleaseQuestion(
   payload: unknown,
@@ -54,15 +34,12 @@ export async function answerReleaseQuestion(
   }
 
   const accountId = parsed.request.context.accountId;
-  const queryKey = await resolveQueryKey();
-  const versionAri = await resolveAri(deps, parsed.request);
 
   const loaded = await loadReleaseContext(deps.client, {
     projectKey: parsed.request.projectKey,
     versionName: parsed.request.versionName,
     ...(accountId === undefined ? {} : { accountId }),
-    ...(queryKey === undefined ? {} : { queryKey }),
-    ...(versionAri === undefined ? {} : { versionAri }),
+    ...(parsed.request.context.cloudId === undefined ? {} : { cloudId: parsed.request.context.cloudId }),
   });
 
   const warning = caveat(loaded.coverage);

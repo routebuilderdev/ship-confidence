@@ -160,7 +160,7 @@ describe("buildPageView", () => {
   it("shows the same verdict the tool would answer", async () => {
     const view = await buildPageView(
       { client: createFakeClient(healthyRoutes()) },
-      { projectKey: "SHIP", versionName: "2.4.0" },
+      { projectKey: "SHIP", versionName: "2.4.0", cloudId: "cloud-1" },
     );
 
     expect(view.verdict).toBe("ship");
@@ -176,7 +176,7 @@ describe("buildPageView", () => {
 
     const view = await buildPageView(
       { client: createFakeClient(routes) },
-      { projectKey: "SHIP", versionName: "2.4.0" },
+      { projectKey: "SHIP", versionName: "2.4.0", cloudId: "cloud-1" },
     );
 
     expect(view.notice).toContain("deployments");

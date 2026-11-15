@@ -17,6 +17,8 @@ import { clampPageSize, ENRICHED_ITEM_LIMIT, QUERIES } from "./queries";
 export interface LoadOptions {
   projectKey: string;
   versionName: string;
+  /** Graph ARI of the release version. Required when a query key is configured. */
+  versionAri?: string;
   pageSize?: number;
   /** Account id of the caller, used only by the access probe. */
   accountId?: string;
@@ -67,13 +69,28 @@ export async function loadReleaseContext(
     };
   }
 
+  // The graph filters nodes on `ari` only, so without one the query cannot be aimed
+  // at a release. That is a resolution failure, not an empty release.
+  if (!options.versionAri) {
+    return {
+      ...empty,
+      coverage: [
+        entry(
+          "workItems",
+          "unavailable",
+          `Release ${options.versionName} could not be found in project ${options.projectKey}, so the Teamwork Graph was never asked which work items belong to it.`,
+        ),
+      ],
+    };
+  }
+
   const scope = await run(
     client,
     "workItems",
-    QUERIES.versionWorkItems,
+    QUERIES.releaseScope,
     {
       queryKey: options.queryKey,
-      queryParams: { spaceKey: options.projectKey, versionName: options.versionName },
+      queryParams: { versionAri: options.versionAri },
       first,
     },
     normaliseWorkItem,

@@ -69,12 +69,23 @@ function routeOf(document: string): keyof Routes | undefined {
   return undefined;
 }
 
+/**
+ * Release scope is aimed with a version ARI, mirroring the real graph. The ids come
+ * from the `@forge/api` stub in `test/setup.ts`.
+ */
+const VERSION_BY_ARI: Record<string, string> = {
+  "ari:cloud:jira:cloud-1:version/10000": "2.4.0",
+  "ari:cloud:jira:cloud-1:version/10001": "2.5.0",
+};
+
 function versionOf(source: keyof Routes, variables: Record<string, unknown>): unknown {
   if (source === "workItems") {
     const params = variables.queryParams;
-    return typeof params === "object" && params !== null
-      ? (params as Record<string, unknown>).versionName
-      : undefined;
+    const ari =
+      typeof params === "object" && params !== null
+        ? (params as Record<string, unknown>).versionAri
+        : undefined;
+    return typeof ari === "string" ? VERSION_BY_ARI[ari] : undefined;
   }
   return variables.versionName;
 }

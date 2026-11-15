@@ -4,6 +4,7 @@ import type { CoverageEntry } from "../graph/coverage";
 import { caveat, mergeCoverage } from "../graph/coverage";
 import { persistedQueryKey } from "../graph/config";
 import { loadReleaseContext } from "../graph/load";
+import { resolveVersionAri } from "../graph/versions";
 import { readContext, readInput } from "../tools/context";
 import { buildResult, failureResult, type ToolResult } from "../tools/result";
 import { defaultDeps, type Deps } from "../tools/release-runner";
@@ -40,17 +41,32 @@ export async function run(payload: unknown, deps: Deps = defaultDeps()): Promise
     );
   }
 
-  const accountId = readContext(payload).accountId;
+  const context = readContext(payload);
+  const accountId = context.accountId;
   const queryKey = persistedQueryKey();
+  const lookup = deps.resolveVersionAri ?? resolveVersionAri;
   const shared = {
     projectKey,
     ...(accountId === undefined ? {} : { accountId }),
     ...(queryKey === undefined ? {} : { queryKey }),
   };
 
+  const [candidateAri, baselineAri] = await Promise.all([
+    lookup(projectKey, versionName, context.cloudId),
+    lookup(projectKey, baselineVersionName, context.cloudId),
+  ]);
+
   const [candidateLoaded, baselineLoaded] = await Promise.all([
-    loadReleaseContext(deps.client, { ...shared, versionName }),
-    loadReleaseContext(deps.client, { ...shared, versionName: baselineVersionName }),
+    loadReleaseContext(deps.client, {
+      ...shared,
+      versionName,
+      ...(candidateAri === undefined ? {} : { versionAri: candidateAri }),
+    }),
+    loadReleaseContext(deps.client, {
+      ...shared,
+      versionName: baselineVersionName,
+      ...(baselineAri === undefined ? {} : { versionAri: baselineAri }),
+    }),
   ]);
 
   const candidateReport = scoreReadiness(candidateLoaded.context);

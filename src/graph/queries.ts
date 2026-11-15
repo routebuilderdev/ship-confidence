@@ -26,21 +26,28 @@ export const ENRICHED_ITEM_LIMIT = 8;
 
 /**
  * The Cypher registered once against this app (POST /gateway/api/twg/cypher-queries).
- * Start from the space, walk to the release versions it owns, then to the work
- * items those versions link. Nothing here is sent as query text at runtime.
+ *
+ * Nodes are matched on `ari`, which is the property the graph documents for
+ * filtering — object fields such as a version's name are not query properties, so
+ * `{name: $versionName}` would fail validation. This is the published traversal for
+ * "the work items of one release", with the version supplied as an argument.
+ * Nothing here is sent as query text at runtime.
  */
-export const PERSISTED_RELEASE_SCOPE = `
-  MATCH (space:JiraSpace {key: $spaceKey})
-        -[:jira_space_has_jira_release_version]->(version:JiraVersion {name: $versionName})
-        -[:jira_version_links_jira_work_item]->(item:JiraWorkItem)
-  RETURN item
-`.trim();
+export const PERSISTED_RELEASE_SCOPE =
+  "MATCH (version:JiraVersion {ari: $versionAri})-[:jira_version_links_jira_work_item]->(item:JiraWorkItem) RETURN item";
 
 /** Parameters declared when registering the query above. */
 export const PERSISTED_RELEASE_SCOPE_PARAMS = [
-  { name: "spaceKey", type: "STRING", required: true },
-  { name: "versionName", type: "STRING", required: true },
+  { name: "versionAri", type: "ARI", required: true },
 ] as const;
+
+/**
+ * Graph id of a release version. Jira object ARIs carry the site's cloud id in the
+ * tenant slot, so this is the only identity the graph accepts for a version.
+ */
+export function versionAri(cloudId: string, versionId: string): string {
+  return `ari:cloud:jira:${cloudId}:version/${versionId}`;
+}
 
 export function clampPageSize(requested?: number): number {
   if (requested === undefined || !Number.isFinite(requested)) return DEFAULT_PAGE_SIZE;
@@ -48,15 +55,11 @@ export function clampPageSize(requested?: number): number {
 }
 
 export const QUERIES = {
-  /**
-   * Work items linked to a release version, via the persisted Cypher query.
-   *
-   * The result is a Cypher connection, not a typed one: each row carries typed
-   * `columns`, and the selected `RETURN item` column holds a `CypherQueryResultNode`
-   * whose `data` is a `JiraWorkItem`.
-   */
-  versionWorkItems: `
-    query ReleaseWorkItems($queryKey: String!, $queryParams: CypherRequestParams, $first: Int!) {
+  // NOTE: the release-scope document is not here — it lives in
+  // `PERSISTED_RELEASE_SCOPE`, executed by key through `QUERIES.releaseScope`.
+  /** Executes the registered release-scope query. */
+  releaseScope: `
+    query ReleaseScope($queryKey: String!, $queryParams: CypherRequestParams, $first: Int!) {
       customQuery(queryKey: $queryKey, queryParams: $queryParams, first: $first) {
         edges {
           node {

@@ -10,6 +10,7 @@ const payload = {
   projectKey: "SHIP",
   versionName: "2.5.0",
   baselineVersionName: "2.4.0",
+  context: { cloudId: "cloud-1" },
 };
 
 function answer(routes: Routes): Promise<ToolResult> {
@@ -85,10 +86,15 @@ describe("compare-releases", () => {
       seen
         .filter((call) => call.source === "workItems")
         .map((call) =>
-          String((call.variables.queryParams as { versionName?: unknown } | undefined)?.versionName),
+          String((call.variables.queryParams as { versionAri?: unknown } | undefined)?.versionAri),
         ),
     );
-    expect(versions).toEqual(new Set(["2.5.0", "2.4.0"]));
+    expect(versions).toEqual(
+      new Set([
+        "ari:cloud:jira:cloud-1:version/10001",
+        "ari:cloud:jira:cloud-1:version/10000",
+      ]),
+    );
   });
 
   it("names what the baseline had and the candidate fixed", async () => {

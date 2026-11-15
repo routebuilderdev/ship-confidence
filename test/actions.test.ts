@@ -70,7 +70,10 @@ describe("get-release-readiness", () => {
 
     const scope = seen.find((call) => call.source === "workItems");
     expect(scope?.variables.queryKey).toBe("test-query-key");
-    expect(scope?.variables.queryParams).toEqual({ spaceKey: "SHIP", versionName: "2.4.0" });
+    // Versions are matched on their graph ARI, never on their name.
+    expect(scope?.variables.queryParams).toEqual({
+      versionAri: "ari:cloud:jira:cloud-1:version/10000",
+    });
   });
 
   it("asks for missing inputs instead of guessing them", async () => {

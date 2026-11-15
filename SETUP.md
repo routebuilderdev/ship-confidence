@@ -116,6 +116,37 @@ Every tool takes `projectKey` and `versionName`; `explain-blocker` also takes
 
 ---
 
+## Registering the release-scope query (once per app)
+
+The graph exposes version membership as a relationship, and a version is filtered by
+its `ari` — not by its name. So the app runs one registered query and turns the
+version the user named into an ARI first.
+
+Submit this once, signed in as a contributor on the app:
+
+```bash
+curl -X POST "https://<site>.atlassian.net/gateway/api/twg/cypher-queries" \
+  -u "<email>:<api-token>" \
+  -H "Content-Type: application/json" \
+  --data-binary @- <<'JSON'
+{"appId":"ari:cloud:ecosystem::app/<appId>","name":"release-scope","cypher":"MATCH (version:JiraVersion {ari: $versionAri})-[:jira_version_links_jira_work_item]->(item:JiraWorkItem) RETURN item","paramsSchema":[{"name":"versionAri","type":"ARI","required":true}]}
+JSON
+```
+
+It answers `201` with a `queryKey`, or `200` if that exact text was already registered
+(registration is idempotent). Allow about a minute before the key works — until then
+execution returns `QUERY_NOT_FOUND`.
+
+Store it:
+
+```bash
+forge variables set -e production SHIP_CONFIDENCE_TWG_QUERY_KEY <queryKey>
+```
+
+Without a key the page says so instead of scoring an empty release.
+
+---
+
 ## Part 2 — Build from source on a free site
 
 ### 1. Create the free site

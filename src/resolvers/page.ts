@@ -5,6 +5,7 @@ import { listProjectVersions, type ProjectVersion } from "../graph/versions";
 import {
   accountIdFromContext,
   buildPageView,
+  cloudIdFromContext,
   parsePageRequest,
   projectKeyFromContext,
 } from "../tools/page-report";
@@ -77,6 +78,7 @@ resolver.define("getReadiness", async (req: ResolverRequest): Promise<ReadinessR
   }
 
   const accountId = accountIdFromContext(req.context);
+  const cloudId = cloudIdFromContext(req.context);
 
   const view = await buildPageView(
     { client: createForgeGraphClient() },
@@ -84,6 +86,7 @@ resolver.define("getReadiness", async (req: ResolverRequest): Promise<ReadinessR
       projectKey: request.projectKey,
       versionName: request.versionName,
       ...(accountId === undefined ? {} : { accountId }),
+      ...(cloudId === undefined ? {} : { cloudId }),
     },
   );
 

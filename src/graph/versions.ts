@@ -1,5 +1,7 @@
 import api, { route } from "@forge/api";
 
+import { versionAri } from "./queries";
+
 /**
  * Project versions, for the page's release picker.
  *
@@ -10,6 +12,8 @@ import api, { route } from "@forge/api";
  */
 
 export interface ProjectVersion {
+  /** Jira's version id. Needed to build the version's graph ARI. */
+  id: string;
   name: string;
   released: boolean;
   releaseDate?: string;
@@ -44,8 +48,10 @@ export async function listProjectVersions(projectKey: string): Promise<ProjectVe
       if (!value || typeof value !== "object") return undefined;
       const record = value as Record<string, unknown>;
       const name = typeof record.name === "string" ? record.name : undefined;
-      if (!name) return undefined;
+      const id = record.id === undefined || record.id === null ? undefined : String(record.id);
+      if (!name || !id) return undefined;
       return {
+        id,
         name,
         released: record.released === true,
         ...(typeof record.releaseDate === "string" ? { releaseDate: record.releaseDate } : {}),
@@ -56,4 +62,30 @@ export async function listProjectVersions(projectKey: string): Promise<ProjectVe
   // `first` does not apply here, but an unbounded project would still be a huge
   // dropdown: the picker shows the 25 most relevant versions.
   return sortVersions(versions).slice(0, 25);
+}
+
+/**
+ * Graph ARI for a version, looked up by the name the user actually said.
+ *
+ * The graph only filters nodes on `ari`, so the name has to be turned into an id
+ * somewhere, and Jira REST is the only place that mapping exists. Returns undefined
+ * rather than throwing: an unknown version becomes an honest "could not resolve"
+ * caveat instead of a failed page.
+ */
+export async function resolveVersionAri(
+  projectKey: string,
+  versionName: string,
+  cloudId: string | undefined,
+): Promise<string | undefined> {
+  if (!cloudId) return undefined;
+
+  try {
+    const versions = await listProjectVersions(projectKey);
+    const match = versions.find(
+      (version) => version.name.trim().toLowerCase() === versionName.trim().toLowerCase(),
+    );
+    return match === undefined ? undefined : versionAri(cloudId, match.id);
+  } catch {
+    return undefined;
+  }
 }

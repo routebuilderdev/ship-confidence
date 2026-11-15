@@ -79,7 +79,15 @@ describe("compare-releases", () => {
       seen,
     });
 
-    const versions = new Set(seen.map((call) => String(call.variables.versionName)));
+    // Release scope travels inside the persisted query parameters, not as a
+    // top-level variable, so that is where the two versions must appear.
+    const versions = new Set(
+      seen
+        .filter((call) => call.source === "workItems")
+        .map((call) =>
+          String((call.variables.queryParams as { versionName?: unknown } | undefined)?.versionName),
+        ),
+    );
     expect(versions).toEqual(new Set(["2.5.0", "2.4.0"]));
   });
 
@@ -125,9 +133,12 @@ describe("compare-releases", () => {
   });
 
   it("merges coverage instead of reporting each source twice", async () => {
+    // Per-item queries carry a work-item id, not a version, so the failure is
+    // injected at the top level and applies to both releases.
     const routes: Routes = {
+      errors: { pullRequests: "Missing scope: read:graph:issue:jira" },
       byVersion: {
-        "2.5.0": { ...riskyRelease(), errors: { deployments: "Missing scope: read:graph:issue:jira" } },
+        "2.5.0": riskyRelease(),
         "2.4.0": cleanRelease("2.4.0"),
       },
     };
@@ -136,9 +147,9 @@ describe("compare-releases", () => {
     const sources = result.coverage.map((entry) => entry.source);
     expect(new Set(sources).size).toBe(sources.length);
     expect(result.coverage.find((entry) => entry.source === "deployments")?.status).toBe(
-      "not_permitted",
+      "unavailable",
     );
-    expect(result.summary).toContain("does not include deployments");
+    expect(result.summary).toMatch(/does not include .*deployments \(query failed\)/);
   });
 });
 

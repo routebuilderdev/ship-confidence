@@ -20,6 +20,8 @@ export interface WorkItem {
   updatedAt?: string;
   /** Jira fix versions. Used to scope items to the release being asked about. */
   fixVersions?: string[];
+  /** Teamwork Graph node id (an ARI). Needed for per-item follow-up queries. */
+  graphId?: string;
 }
 
 export type PullRequestState = "open" | "merged" | "declined" | "unknown";

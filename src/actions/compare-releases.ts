@@ -2,8 +2,9 @@ import { compareReleases, snapshotOf, summariseComparison } from "../domain/comp
 import { scoreReadiness } from "../domain/readiness";
 import type { CoverageEntry } from "../graph/coverage";
 import { caveat, mergeCoverage } from "../graph/coverage";
+import { persistedQueryKey } from "../graph/config";
 import { loadReleaseContext } from "../graph/load";
-import { readInput } from "../tools/context";
+import { readContext, readInput } from "../tools/context";
 import { buildResult, failureResult, type ToolResult } from "../tools/result";
 import { defaultDeps, type Deps } from "../tools/release-runner";
 
@@ -39,9 +40,17 @@ export async function run(payload: unknown, deps: Deps = defaultDeps()): Promise
     );
   }
 
+  const accountId = readContext(payload).accountId;
+  const queryKey = persistedQueryKey();
+  const shared = {
+    projectKey,
+    ...(accountId === undefined ? {} : { accountId }),
+    ...(queryKey === undefined ? {} : { queryKey }),
+  };
+
   const [candidateLoaded, baselineLoaded] = await Promise.all([
-    loadReleaseContext(deps.client, { projectKey, versionName }),
-    loadReleaseContext(deps.client, { projectKey, versionName: baselineVersionName }),
+    loadReleaseContext(deps.client, { ...shared, versionName }),
+    loadReleaseContext(deps.client, { ...shared, versionName: baselineVersionName }),
   ]);
 
   const candidateReport = scoreReadiness(candidateLoaded.context);

@@ -1,20 +1,46 @@
 /**
  * Teamwork Graph query documents.
  *
- * These use *curated queries* (the typed, registered-free layer), not raw Cypher.
- * Curated queries are Relay-style: `edges { node }` plus
- * `pageInfo { hasNextPage endCursor }`, and `first` is hard-capped at 25 — asking
- * for more is an error, not a truncation.
+ * Every field and argument below was checked against this site's published SDL
+ * (`GET https://<site>/gateway/api/graphql/twg/schema`) rather than the docs prose,
+ * because the two disagreed twice. Notable, verified facts:
  *
- * VALIDATE BEFORE DEPLOY: field names below come from Atlassian's curated query
- * list, but the exact argument shapes must be checked against the Query Builder
- * (https://teamwork-graph.atlassian.com/query-builder) for your site. This file is
- * the only place queries live, precisely so that check is a one-file diff.
+ * - `JiraWorkItem` has NO fix-version field. Version membership is a *relationship*
+ *   (`jira_version_links_jira_work_item`), reachable only through a persisted
+ *   Cypher query — see `PERSISTED_RELEASE_SCOPE` below.
+ * - Curated queries take ARIs: `jiraWorkItemComments(id:)`, `jiraWorkItemLinkedExternal*` etc.
+ * - `first` never exceeds 25.
+ * - Result nodes are unions, so every selection uses an inline fragment.
  */
 
 /** Platform cap. Not a preference. */
 export const MAX_PAGE_SIZE = 25;
 export const DEFAULT_PAGE_SIZE = 25;
+
+/**
+ * How many work items get per-item follow-up queries (development artefacts and
+ * comments). Each item costs two round trips, and the project page resolver only
+ * has 25 s for everything, so the tail is reported as unread rather than fetched.
+ */
+export const ENRICHED_ITEM_LIMIT = 8;
+
+/**
+ * The Cypher registered once against this app (POST /gateway/api/twg/cypher-queries).
+ * Start from the space, walk to the release versions it owns, then to the work
+ * items those versions link. Nothing here is sent as query text at runtime.
+ */
+export const PERSISTED_RELEASE_SCOPE = `
+  MATCH (space:JiraSpace {key: $spaceKey})
+        -[:jira_space_has_jira_release_version]->(version:JiraVersion {name: $versionName})
+        -[:jira_version_links_jira_work_item]->(item:JiraWorkItem)
+  RETURN item
+`.trim();
+
+/** Parameters declared when registering the query above. */
+export const PERSISTED_RELEASE_SCOPE_PARAMS = [
+  { name: "spaceKey", type: "STRING", required: true },
+  { name: "versionName", type: "STRING", required: true },
+] as const;
 
 export function clampPageSize(requested?: number): number {
   if (requested === undefined || !Number.isFinite(requested)) return DEFAULT_PAGE_SIZE;
@@ -23,22 +49,37 @@ export function clampPageSize(requested?: number): number {
 
 export const QUERIES = {
   /**
-   * Work items in scope for a version. `jiraSpaceWorkItems` is the curated entry
-   * point for project/space scoped issues.
+   * Work items linked to a release version, via the persisted Cypher query.
+   *
+   * The result is a Cypher connection, not a typed one: each row carries typed
+   * `columns`, and the selected `RETURN item` column holds a `CypherQueryResultNode`
+   * whose `data` is a `JiraWorkItem`.
    */
-  workItems: `
-    query ReleaseWorkItems($projectKey: String!, $first: Int!) {
-      jiraSpaceWorkItems(projectKey: $projectKey, first: $first) {
+  versionWorkItems: `
+    query ReleaseWorkItems($queryKey: String!, $queryParams: CypherRequestParams, $first: Int!) {
+      customQuery(queryKey: $queryKey, queryParams: $queryParams, first: $first) {
         edges {
           node {
-            key
-            summary
-            issueType
-            url
-            updatedAt
-            assignee { accountId }
-            status { name category }
-            fixVersions { name }
+            columns {
+              key
+              value {
+                ... on CypherQueryResultNode {
+                  id
+                  data {
+                    ... on JiraWorkItem {
+                      id
+                      key
+                      summary
+                      issueType { name }
+                      status { name statusCategory { key } }
+                      webUrl
+                      createdAt
+                      resolvedAt
+                    }
+                  }
+                }
+              }
+            }
           }
         }
         pageInfo { hasNextPage endCursor }
@@ -46,73 +87,75 @@ export const QUERIES = {
     }
   `,
 
-  /** External pull requests linked to work items, for "done" claims to be checked. */
-  pullRequests: `
-    query ReleasePullRequests($projectKey: String!, $first: Int!) {
-      jiraSpaceWorkItems(projectKey: $projectKey, first: $first) {
+  /**
+   * Pull requests, deployments, builds and designs linked to one work item, in a
+   * single call. Splitting these into separate curated queries doubled the round
+   * trips for no benefit.
+   */
+  developmentArtifacts: `
+    query WorkItemArtifacts($id: ID!, $first: Int!) {
+      jiraWorkItemDevelopmentArtifacts(id: $id, first: $first) {
         edges {
           node {
-            key
-            linkedExternalPullRequests {
+            ... on ExternalPullRequest {
               id
               title
-              state
+              displayName
               url
-              reviewDecision
+              status
+              reviewers { approvalStatus }
+            }
+            ... on ExternalDeployment {
+              id
+              displayName
+              url
+              state
+              environment { displayName type }
             }
           }
         }
+        pageInfo { hasNextPage }
       }
     }
   `,
 
-  /** External deployments linked to work items. */
-  deployments: `
-    query ReleaseDeployments($projectKey: String!, $first: Int!) {
-      jiraSpaceWorkItems(projectKey: $projectKey, first: $first) {
+  /** Comments on one work item, bounded to the recent past so a busy item stays cheap. */
+  comments: `
+    query WorkItemComments($id: ID!, $first: Int!) {
+      jiraWorkItemComments(id: $id, since: "P30D", first: $first) {
         edges {
           node {
-            key
-            linkedExternalDeployments {
+            ... on JiraWorkItemComment {
               id
-              environment
-              status
-              url
+              content
+              createdAt
+              webUrl
             }
           }
         }
+        pageInfo { hasNextPage }
       }
     }
   `,
 
   /**
-   * Access probe, run only when the work-item answer came back empty.
-   * One item is enough: the question is "can this user read issues at all", not
-   * "what are they working on".
+   * Access probe, run only when the version came back with no work items.
+   * `userId` must be an identity ARI: ari:cloud:identity::user/<accountId>.
    */
   probe: `
-    query CoverageProbe($first: Int!) {
-      atlassianUserAssignedJiraWorkItems(first: $first) {
-        edges {
-          node { key }
-        }
-      }
-    }
-  `,
-
-  /** Comment activity, bounded to the recent past so a big project stays cheap. */
-  reviewSignals: `
-    query ReleaseComments($projectKey: String!, $first: Int!) {
-      jiraWorkItemComments(projectKey: $projectKey, since: P30D, first: $first) {
+    query CoverageProbe($userId: ID!, $first: Int!) {
+      atlassianUserAssignedJiraWorkItems(userId: $userId, first: $first) {
         edges {
           node {
-            id
-            body
-            created
-            workItemKey
+            ... on JiraWorkItem { key }
           }
         }
       }
     }
   `,
 } as const;
+
+/** Identity ARI for the probe, from a bare account id. */
+export function userAri(accountId: string): string {
+  return `ari:cloud:identity::user/${accountId}`;
+}

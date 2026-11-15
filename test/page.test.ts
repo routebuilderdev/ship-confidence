@@ -171,7 +171,8 @@ describe("buildPageView", () => {
 
   it("carries the partial-picture notice onto the page", async () => {
     const routes: Routes = healthyRoutes();
-    routes.errors = { deployments: "Missing scope: read:graph:issue:jira" };
+    // Per-item artefacts carry the deployment data, so that is the query to fail.
+    routes.errors = { pullRequests: "Missing scope: read:graph:issue:jira" };
 
     const view = await buildPageView(
       { client: createFakeClient(routes) },
@@ -180,7 +181,7 @@ describe("buildPageView", () => {
 
     expect(view.notice).toContain("deployments");
     expect(view.coverage.find((entry) => entry.source === "deployments")?.status).toBe(
-      "not_permitted",
+      "unavailable",
     );
   });
 });

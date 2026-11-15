@@ -2,7 +2,12 @@ import Resolver from "@forge/resolver";
 
 import { createForgeGraphClient } from "../graph/forge-client";
 import { listProjectVersions, type ProjectVersion } from "../graph/versions";
-import { buildPageView, parsePageRequest, projectKeyFromContext } from "../tools/page-report";
+import {
+  accountIdFromContext,
+  buildPageView,
+  parsePageRequest,
+  projectKeyFromContext,
+} from "../tools/page-report";
 import type { PageView } from "../frontend/view";
 
 /**
@@ -71,9 +76,15 @@ resolver.define("getReadiness", async (req: ResolverRequest): Promise<ReadinessR
     };
   }
 
+  const accountId = accountIdFromContext(req.context);
+
   const view = await buildPageView(
     { client: createForgeGraphClient() },
-    { projectKey: request.projectKey, versionName: request.versionName },
+    {
+      projectKey: request.projectKey,
+      versionName: request.versionName,
+      ...(accountId === undefined ? {} : { accountId }),
+    },
   );
 
   return { ok: true, view };

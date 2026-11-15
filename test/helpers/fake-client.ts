@@ -1,10 +1,16 @@
 import type { GraphResult, TeamworkGraphClient } from "../../src/graph/client";
 
 /**
- * A fake graph client. Routes on the curated query being called, which is the
- * seam the tests care about: everything below it is pure mapping.
+ * A fake graph client. Routes on the document being called, which is the seam the
+ * tests care about: everything below it is pure mapping.
+ *
+ * Two shapes matter. Release scope comes back as a Cypher connection
+ * (`customQuery.edges[].node.columns[].value.data`), because version → work item is
+ * only reachable through a persisted query. Per-item detail comes back as ordinary
+ * typed connections with union members distinguished by `__typename`.
  */
 export interface Routes {
+  /** `JiraWorkItem` payloads, wrapped into the Cypher result shape by the fake. */
   workItems?: unknown[];
   pullRequests?: unknown[];
   deployments?: unknown[];
@@ -15,10 +21,10 @@ export interface Routes {
   errors?: Partial<Record<keyof Routes, string>>;
   /** Per-source throw injection, to exercise the timeout/error path. */
   throws?: Partial<Record<keyof Routes, Error>>;
-  /** Capture variables for assertions about page size. */
+  /** Capture variables for assertions about parameters and page size. */
   seen?: Array<{ source: string; variables: Record<string, unknown> }>;
   /**
-   * Per-version responses, keyed by the `versionName` variable. Used by the
+   * Per-version responses, keyed by the `versionName` parameter. Used by the
    * comparison tests, which read two releases through the same client.
    */
   byVersion?: Record<string, Routes>;
@@ -28,13 +34,49 @@ function connection(nodes: unknown[]): unknown {
   return { edges: nodes.map((node) => ({ node })) };
 }
 
+/** Wrap work-item payloads the way `customQuery` returns them. */
+function cypherConnection(nodes: unknown[]): unknown {
+  return {
+    edges: nodes.map((node, index) => ({
+      node: {
+        columns: [
+          {
+            key: "item",
+            value: {
+              __typename: "CypherQueryResultNode",
+              id: `graph-${index}`,
+              // A work item needs a graph id for the per-item follow-up queries, and
+              // fixtures should not have to invent ARIs.
+              data: {
+                __typename: "JiraWorkItem",
+                id: `ari:cloud:jira::issue/${index}`,
+                ...(node as object),
+              },
+            },
+          },
+        ],
+      },
+    })),
+    pageInfo: { hasNextPage: false, endCursor: null },
+  };
+}
+
 function routeOf(document: string): keyof Routes | undefined {
   if (document.includes("atlassianUserAssignedJiraWorkItems")) return "probe";
-  if (document.includes("linkedExternalPullRequests")) return "pullRequests";
-  if (document.includes("linkedExternalDeployments")) return "deployments";
+  if (document.includes("jiraWorkItemDevelopmentArtifacts")) return "pullRequests";
   if (document.includes("jiraWorkItemComments")) return "comments";
-  if (document.includes("jiraSpaceWorkItems")) return "workItems";
+  if (document.includes("customQuery")) return "workItems";
   return undefined;
+}
+
+function versionOf(source: keyof Routes, variables: Record<string, unknown>): unknown {
+  if (source === "workItems") {
+    const params = variables.queryParams;
+    return typeof params === "object" && params !== null
+      ? (params as Record<string, unknown>).versionName
+      : undefined;
+  }
+  return variables.versionName;
 }
 
 export function createFakeClient(routes: Routes = {}): TeamworkGraphClient {
@@ -50,7 +92,7 @@ export function createFakeClient(routes: Routes = {}): TeamworkGraphClient {
 
       routes.seen?.push({ source, variables });
 
-      const versionName = variables.versionName;
+      const versionName = versionOf(source, variables);
       const active =
         (typeof versionName === "string" ? routes.byVersion?.[versionName] : undefined) ?? routes;
 
@@ -60,11 +102,28 @@ export function createFakeClient(routes: Routes = {}): TeamworkGraphClient {
       const message = active.errors?.[source];
       if (message) return { errors: [{ message }] };
 
+      // Deployment detail arrives through the artefacts query, so the fake splits
+      // the two arrays back out by type to keep test setup declarative.
+      if (source === "pullRequests") {
+        const pulls = (active.pullRequests ?? []).map((node) => ({
+          __typename: "ExternalPullRequest",
+          ...(node as object),
+        }));
+        const deployments = (active.deployments ?? []).map((node) => ({
+          __typename: "ExternalDeployment",
+          ...(node as object),
+        }));
+        return { data: { connection: connection([...pulls, ...deployments]) } as T, errors: [] };
+      }
+
       const nodes = active[source];
-      return {
-        data: { connection: connection(Array.isArray(nodes) ? nodes : []) } as T,
-        errors: [],
-      };
+      const list = Array.isArray(nodes) ? nodes : [];
+
+      if (source === "workItems") {
+        return { data: { customQuery: cypherConnection(list) } as T, errors: [] };
+      }
+
+      return { data: { connection: connection(list) } as T, errors: [] };
     },
   };
 }
@@ -74,31 +133,23 @@ export function healthyRoutes(): Routes {
   return {
     workItems: [
       {
+        id: "ari:cloud:jira::issue/1",
         key: "SHIP-1",
         summary: "Add readiness endpoint",
         issueType: { name: "Story" },
-        status: { name: "Done", category: "done" },
-        fixVersions: [{ name: "2.4.0" }],
+        status: { name: "Done", statusCategory: { key: "done" } },
       },
       {
+        id: "ari:cloud:jira::issue/2",
         key: "SHIP-2",
         summary: "Tune confidence thresholds",
         issueType: { name: "Task" },
-        status: { name: "Done", category: "done" },
-        fixVersions: [{ name: "2.4.0" }],
+        status: { name: "Done", statusCategory: { key: "done" } },
       },
     ],
-    pullRequests: [
-      {
-        id: "pr-1",
-        title: "Readiness endpoint",
-        state: "merged",
-        reviewDecision: "approved",
-        workItemKey: "SHIP-1",
-      },
-    ],
+    pullRequests: [{ id: "pr-1", title: "Readiness endpoint", status: "MERGED", reviewers: [] }],
     deployments: [
-      { id: "dep-1", environment: "staging", status: "successful", workItemKey: "SHIP-1" },
+      { id: "dep-1", state: "SUCCESSFUL", environment: { displayName: "staging", type: "STAGING" } },
     ],
     comments: [],
   };

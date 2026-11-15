@@ -7,7 +7,11 @@ import { run as notes } from "../src/actions/draft-release-notes";
 import { createFakeClient, healthyRoutes, type Routes } from "./helpers/fake-client";
 import type { ToolResult } from "../src/tools/result";
 
-const payload = { projectKey: "SHIP", versionName: "2.4.0", context: { cloudId: "cloud-1" } };
+const payload = {
+  projectKey: "SHIP",
+  versionName: "2.4.0",
+  context: { cloudId: "cloud-1", accountId: "acc-1" },
+};
 
 function answer(routes: Routes): Promise<ToolResult> {
   return readiness(payload, { client: createFakeClient(routes) });
@@ -25,9 +29,7 @@ describe("get-release-readiness", () => {
 
   it("says not ready when an open pull request contradicts a done work item", async () => {
     const routes = healthyRoutes();
-    routes.pullRequests = [
-      { id: "pr-1", title: "Readiness endpoint", state: "open", workItemKey: "SHIP-1" },
-    ];
+    routes.pullRequests = [{ id: "pr-1", title: "Readiness endpoint", status: "OPEN" }];
 
     const result = await answer(routes);
     expect(result.ok).toBe(true);
@@ -53,27 +55,22 @@ describe("get-release-readiness", () => {
 
   it("degrades to unavailable when a source throws", async () => {
     const routes = healthyRoutes();
-    routes.throws = { deployments: new Error("connection reset") };
+    // Artefacts and deployments arrive through one per-item query, so a throw there
+    // is a broken deployment source, not an empty one.
+    routes.throws = { pullRequests: new Error("connection reset") };
 
     const result = await answer(routes);
     expect(result.coverage.find((c) => c.source === "deployments")?.status).toBe("unavailable");
-    expect(result.summary).toContain("deployments (query failed)");
+    expect(result.summary).toContain("deployments");
   });
 
-  it("ignores work items that belong to another version", async () => {
-    const routes = healthyRoutes();
-    routes.workItems = [
-      {
-        key: "SHIP-7",
-        summary: "Next release work",
-        status: { name: "Done" },
-        fixVersions: [{ name: "2.5.0" }],
-      },
-    ];
+  it("asks the graph for exactly one release, by space and version", async () => {
+    const seen: Array<{ source: string; variables: Record<string, unknown> }> = [];
+    await answer({ ...healthyRoutes(), seen });
 
-    const result = await answer(routes);
-    expect(result.ok).toBe(false);
-    expect(result.summary).toContain("no work items in scope");
+    const scope = seen.find((call) => call.source === "workItems");
+    expect(scope?.variables.queryKey).toBe("test-query-key");
+    expect(scope?.variables.queryParams).toEqual({ spaceKey: "SHIP", versionName: "2.4.0" });
   });
 
   it("asks for missing inputs instead of guessing them", async () => {
@@ -105,13 +102,11 @@ function blockedRoutes(): Routes {
       issueType: { name: "Task" },
       status: { name: "In Progress" },
       blockedReason: "Waiting on legal sign-off",
-      url: "https://example.atlassian.net/browse/SHIP-442",
+      webUrl: "https://example.atlassian.net/browse/SHIP-442",
       fixVersions: [{ name: "2.4.0" }],
     },
   ];
-  routes.pullRequests = [
-    { id: "pr-9", title: "Billing migration", state: "open", workItemKey: "SHIP-442" },
-  ];
+  routes.pullRequests = [{ id: "pr-9", title: "Billing migration", status: "OPEN" }];
   return routes;
 }
 

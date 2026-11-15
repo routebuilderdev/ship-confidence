@@ -1,5 +1,6 @@
 import { scoreReadiness } from "../domain/readiness";
 import { toPageView, type PageView } from "../frontend/view";
+import { persistedQueryKey } from "../graph/config";
 import { loadReleaseContext } from "../graph/load";
 import type { Deps } from "./release-runner";
 
@@ -46,11 +47,15 @@ export function parsePageRequest(input: PageRequestInput): PageRequest {
 
 export async function buildPageView(
   deps: Deps,
-  request: { projectKey: string; versionName: string },
+  request: { projectKey: string; versionName: string; accountId?: string },
 ): Promise<PageView> {
+  const queryKey = persistedQueryKey();
+
   const loaded = await loadReleaseContext(deps.client, {
     projectKey: request.projectKey,
     versionName: request.versionName,
+    ...(request.accountId === undefined ? {} : { accountId: request.accountId }),
+    ...(queryKey === undefined ? {} : { queryKey }),
   });
 
   const report = scoreReadiness(loaded.context);
@@ -63,6 +68,11 @@ export async function buildPageView(
     warnings: loaded.warnings,
     workItems: loaded.context.workItems,
   });
+}
+
+/** The caller's identity, from the resolver context (never from the browser payload). */
+export function accountIdFromContext(context: unknown): string | undefined {
+  return readString(readRecord(context).accountId);
 }
 
 /** Narrowing helper for the resolver's opaque `context`. */

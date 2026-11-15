@@ -8,6 +8,18 @@ describe("issueAri", () => {
   });
 });
 
+describe("operation names", () => {
+  it("uses the company_operation shape the graph requires", () => {
+    for (const [name, document] of Object.entries(QUERIES)) {
+      // A badly named operation returns HTTP 200 with a DataFetchingException, so
+      // nothing else in the stack notices the query never ran.
+      expect(document, `${name} must name its operation`).toMatch(
+        /query\s+[A-Za-z0-9]{3,}_[A-Za-z0-9]{4,}\s*\(/,
+      );
+    }
+  });
+});
+
 describe("clampPageSize", () => {
   it("never asks for more than the curated query cap", () => {
     expect(clampPageSize(100)).toBe(MAX_PAGE_SIZE);

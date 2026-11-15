@@ -11,6 +11,9 @@
  *   is used for everything per-item.
  * - Curated queries take ARIs: `jiraWorkItemComments(id:)`, `jiraWorkItemLinkedExternal*` etc.
  * - `first` never exceeds 25.
+ * - Every operation needs a name shaped `[company]_[operation]` (company 3+ chars,
+ *   operation 4+). Unnamed or badly named operations come back as a 200 carrying a
+ *   DataFetchingException, so checking `ok` alone reports success on a failed read.
  * - Result nodes are unions, so every selection uses an inline fragment.
  */
 
@@ -42,7 +45,7 @@ export const QUERIES = {
    * trips for no benefit.
    */
   developmentArtifacts: `
-    query WorkItemArtifacts($id: ID!, $first: Int!) {
+    query ship_releaseArtifacts($id: ID!, $first: Int!) {
       jiraWorkItemDevelopmentArtifacts(id: $id, first: $first) {
         edges {
           node {
@@ -70,7 +73,7 @@ export const QUERIES = {
 
   /** Comments on one work item, bounded to the recent past so a busy item stays cheap. */
   comments: `
-    query WorkItemComments($id: ID!, $first: Int!) {
+    query ship_releaseComments($id: ID!, $first: Int!) {
       jiraWorkItemComments(id: $id, since: "P30D", first: $first) {
         edges {
           node {
@@ -92,7 +95,7 @@ export const QUERIES = {
    * `userId` must be an identity ARI: ari:cloud:identity::user/<accountId>.
    */
   probe: `
-    query CoverageProbe($userId: ID!, $first: Int!) {
+    query ship_coverageProbe($userId: ID!, $first: Int!) {
       atlassianUserAssignedJiraWorkItems(userId: $userId, first: $first) {
         edges {
           node {

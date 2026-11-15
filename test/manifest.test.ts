@@ -5,6 +5,8 @@ import { dirname, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 
+import { APP_ARI } from "../src/graph/register";
+
 /**
  * The manifest is the only place the tool surface is declared, and Forge gives no
  * compile-time check that a handler string points at a real export. This test is
@@ -183,6 +185,28 @@ describe("manifest", () => {
       for (const tool of skill.dependencies?.tools ?? []) {
         expect(actionKeys.has(tool), `skill depends on unknown tool ${tool}`).toBe(true);
       }
+    }
+  });
+});
+
+describe("query registration identity", () => {
+  it("registers the persisted query against the app that owns the manifest", () => {
+    const appId = (manifest as unknown as { app: { id: string } }).app.id;
+    // A mismatch would register the query to an app that can never execute it.
+    expect(appId).toBe(APP_ARI);
+  });
+
+  it("declares the object scopes the graph queries read", () => {
+    const scopes = (manifest as unknown as { permissions: { scopes: string[] } }).permissions.scopes;
+    for (const scope of [
+      "read:graph:issue:jira",
+      "read:graph:version:jira",
+      "read:graph:issue-comment:jira",
+      "read:graph:pull-request:external",
+      "read:graph:deployment:external",
+    ]) {
+      // A missing scope does not error — it silently empties the result.
+      expect(scopes).toContain(scope);
     }
   });
 });

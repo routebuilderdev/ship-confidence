@@ -2,7 +2,7 @@ import { compareReleases, snapshotOf, summariseComparison } from "../domain/comp
 import { scoreReadiness } from "../domain/readiness";
 import type { CoverageEntry } from "../graph/coverage";
 import { caveat, mergeCoverage } from "../graph/coverage";
-import { persistedQueryKey } from "../graph/config";
+import { resolveQueryKey } from "../graph/config";
 import { loadReleaseContext } from "../graph/load";
 import { resolveVersionAri } from "../graph/versions";
 import { readContext, readInput } from "../tools/context";
@@ -43,7 +43,7 @@ export async function run(payload: unknown, deps: Deps = defaultDeps()): Promise
 
   const context = readContext(payload);
   const accountId = context.accountId;
-  const queryKey = persistedQueryKey();
+  const queryKey = await resolveQueryKey();
   const lookup = deps.resolveVersionAri ?? resolveVersionAri;
   const shared = {
     projectKey,

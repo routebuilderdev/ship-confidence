@@ -1,5 +1,5 @@
 import type { TeamworkGraphClient } from "../graph/client";
-import { persistedQueryKey } from "../graph/config";
+import { resolveQueryKey } from "../graph/config";
 import { caveat } from "../graph/coverage";
 import { createForgeGraphClient } from "../graph/forge-client";
 import type { LoadedContext } from "../graph/load";
@@ -54,7 +54,7 @@ export async function answerReleaseQuestion(
   }
 
   const accountId = parsed.request.context.accountId;
-  const queryKey = persistedQueryKey();
+  const queryKey = await resolveQueryKey();
   const versionAri = await resolveAri(deps, parsed.request);
 
   const loaded = await loadReleaseContext(deps.client, {

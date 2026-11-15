@@ -27,10 +27,11 @@ npm run verify        # tsc --noEmit + vitest
 
 ## Deploy
 
-Requires an Atlassian site with **Rovo activated**, and Node 22+.
+Requires a Jira Cloud site — a **free developer site is enough** — and Node 22+. No Rovo
+licence is needed for external MCP clients; see `SETUP.md` for the full walkthrough.
 
 ```bash
-npm i -g @forge/cli@^13.3.0
+npm i -g @forge/cli@latest
 forge login
 forge register        # replaces the placeholder app.id in manifest.yml
 forge deploy
@@ -67,7 +68,8 @@ claude mcp add --transport http ship-confidence https://mcp.atlassian.com/forge/
 ```
 
 Then run `/mcp` in the session and complete the OAuth consent screen. Rovo Studio
-agents can add the same tools under **Add tools → Connected apps**.
+agents can add the same tools under **Add tools → Connected apps**. `SETUP.md` has the
+Inspector and VS Code equivalents, plus troubleshooting.
 
 ## Known platform behaviour
 

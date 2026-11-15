@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { invoke } from "@forge/bridge";
-import {
+import ForgeReconciler, {
   Badge,
   Box,
   Heading,
@@ -172,6 +172,16 @@ const App = () => {
           </SectionMessage>
         ) : null}
 
+        {/* A project with no versions has nothing to score. Without this the page
+            renders its header and looks broken. */}
+        {error === undefined && !loading && options.length === 0 ? (
+          <SectionMessage appearance="information" title="No versions to score">
+            <Text>
+              This space has no Jira versions yet. Add one in Space settings then reload this page.
+            </Text>
+          </SectionMessage>
+        ) : null}
+
         {view === undefined && loading ? (
           <Box>
             <Spinner size="medium" />
@@ -264,5 +274,11 @@ const App = () => {
     </Box>
   );
 };
+
+/**
+ * A native UI Kit resource must mount itself: exporting the component is not
+ * enough, and the page renders blank if this call is missing.
+ */
+ForgeReconciler.render(<App />);
 
 export default App;

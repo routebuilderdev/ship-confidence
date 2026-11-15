@@ -92,6 +92,10 @@ describe("manifest", () => {
     }
     for (const action of actions) {
       expect(action.key.length).toBeLessThan(64);
+      // The manifest schema caps this at 255; exceeding it fails the whole action.
+      expect(action.description.length, `${action.key} description is too long`).toBeLessThanOrEqual(
+        255,
+      );
     }
   });
 

@@ -24,9 +24,6 @@ modules:
         - explain-blocker
         - draft-release-notes
         - compare-releases
-      resources:
-        - key: confidence-rubric
-          path: resources/rubric.md
 
   # --- Tools -----------------------------------------------------------------
   # Every tool is read-only (actionVerb: GET) so it can also be invoked by
@@ -38,11 +35,10 @@ modules:
       function: getReleaseReadiness
       actionVerb: GET
       description: >
-        Score whether a Jira version is safe to release. Correlates open blockers,
-        unfinished work items, unresolved review comments, linked pull requests
-        that never merged, and failed deployments. Returns a verdict, a 0-100
-        score, the risk factors behind it, and which data sources were actually
-        readable for the calling user.
+        Score whether a Jira version is safe to release. Correlates blockers,
+        unfinished work items, unresolved review comments, unmerged pull requests
+        and failed deployments. Returns a verdict, a 0-100 score, the risk factors
+        and which sources were readable.
       inputs:
         projectKey:
           title: Project key
@@ -62,7 +58,8 @@ modules:
       description: >
         List the individual blockers currently holding back a Jira version, each
         with its work item key, owner, why it blocks, and a link. Use this after
-        get-release-readiness when the user asks what specifically is in the way.
+        get-release-readiness when the user asks what specifically is in the
+        way.
       inputs:
         projectKey:
           title: Project key
@@ -80,9 +77,9 @@ modules:
       function: getReleaseRiskFactors
       actionVerb: GET
       description: >
-        Return every risk signal detected for a Jira version, ranked by severity,
-        including warnings that are not hard blockers. Use this to explain why a
-        readiness score dropped or to compare two releases.
+        Return every risk signal detected for a Jira version, ranked by
+        severity, including warnings that are not hard blockers. Use this to
+        explain why a readiness score dropped or to compare two releases.
       inputs:
         projectKey:
           title: Project key
@@ -100,10 +97,10 @@ modules:
       function: explainBlocker
       actionVerb: GET
       description: >
-        Explain a single blocker in depth: why it blocks, the work item it belongs
-        to, its linked pull requests and deployments, and its recent review
-        comments. Use this when the user asks why one specific work item is
-        blocking a release. Requires either a work item key or a blocker id.
+        Explain a blocker in depth: why it blocks, the work item it belongs to,
+        its linked pull requests and deployments, and its recent review comments.
+        Use when the user asks why one specific work item blocks a release.
+        Requires a work item key or blocker id.
       inputs:
         projectKey:
           title: Project key
@@ -124,7 +121,8 @@ modules:
           title: Blocker id
           type: string
           required: false
-          description: Blocker identifier as returned by list-open-blockers, for example blocked-work-item:SHIP-442.
+          description: Blocker identifier as returned by list-open-blockers, for example
+            blocked-work-item:SHIP-442.
 
     - key: draft-release-notes
       name: Draft release notes
@@ -132,8 +130,8 @@ modules:
       actionVerb: GET
       description: >
         Draft release notes for a Jira version from its completed work items,
-        grouped by issue type, with unfinished and blocked items left out. Returns
-        markdown the user can paste into a changelog or a page.
+        grouped by issue type, with unfinished and blocked items left out.
+        Returns markdown the user can paste into a changelog or a page.
       inputs:
         projectKey:
           title: Project key
@@ -153,8 +151,8 @@ modules:
       description: >
         Explain why one Jira version scores worse or better than another. Reads
         both releases, diffs their risk factors, and reports which problems are
-        new, which are fixed, and which persisted. Use this when the user asks
-        what changed between two releases rather than whether one is ready.
+        new, fixed or persisted. Use when asked what changed between two releases,
+        not whether one is ready.
       inputs:
         projectKey:
           title: Project key
@@ -165,7 +163,8 @@ modules:
           title: Version name
           type: string
           required: true
-          description: Exact Jira version name of the release being judged, for example 2.5.0.
+          description: Exact Jira version name of the release being judged, for example
+            2.5.0.
         baselineVersionName:
           title: Baseline version name
           type: string
@@ -227,5 +226,4 @@ app:
     name: nodejs24.x
     memoryMB: 256
     architecture: arm64
-  # Replace with the id produced by `forge register` before deploying.
-  id: ari:cloud:ecosystem::app/00000000-0000-0000-0000-000000000000
+  id: ari:cloud:ecosystem::app/a511fd32-b70e-4242-a838-74b273f77a43

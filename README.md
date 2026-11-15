@@ -95,7 +95,6 @@ src/graph/      Teamwork Graph queries, client port, loader, coverage, probe, ve
 src/resolvers/  project-page resolver (versions + one score)
 src/frontend/   UI Kit page and its pure view model
 skills/         SKILL.md an agent can load to use the tools well
-resources/      rubric served to the agent as a Forge resource
 ```
 
 ## Verify before believing

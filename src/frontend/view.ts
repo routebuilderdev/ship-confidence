@@ -1,6 +1,7 @@
 import type { CoverageEntry, CoverageStatus } from "../graph/coverage";
 import { caveat, SOURCE_LABELS } from "../graph/coverage";
 import type { ReadinessReport, RiskFactor, Severity, Verdict } from "../domain/readiness";
+import { nextAction } from "../domain/readiness";
 import type { WorkItem } from "../domain/types";
 
 /**
@@ -146,24 +147,8 @@ function countLine(report: ReadinessReport): string {
  * a dashboard; a release gate tells you which thing to unblock next.
  */
 function nextStep(report: ReadinessReport, coverage: CoverageEntry[]): string {
-  if (report.verdict === "unverified") {
-    const blind = coverage.filter((entry) => entry.status === "not_permitted");
-    return blind.length > 0
-      ? "This release could not be read. Ask a site admin to check the app's Teamwork Graph scopes, then refresh."
-      : "No work items were found for this version. Check that the version name is exact and that work items carry it as a fix version.";
-  }
-
-  const firstBlocker = report.riskFactors.find((factor) => factor.severity === "blocker");
-  if (firstBlocker) {
-    const where = firstBlocker.workItemKey === undefined ? "" : ` on ${firstBlocker.workItemKey}`;
-    return `Clear "${firstBlocker.title}"${where} first, then refresh. ${report.counts.blockers - 1 > 0 ? `${report.counts.blockers - 1} more blocker${report.counts.blockers - 1 === 1 ? "" : "s"} remain beyond it.` : ""}`.trim();
-  }
-
-  if (report.verdict === "ship_with_risk") {
-    return "Nothing is blocking, but the warnings below are still open. Either accept them explicitly or close them before announcing the release.";
-  }
-
-  return "No blockers and no warnings. Draft the release notes from the completed work items and ship.";
+  const denied = coverage.some((entry) => entry.status === "not_permitted");
+  return nextAction(report, denied);
 }
 
 export function toCoverageView(entry: CoverageEntry): CoverageView {

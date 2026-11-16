@@ -183,12 +183,42 @@ function verdictFor(score: number): Verdict {
   return "do_not_ship";
 }
 
+/**
+ * The one sentence every surface ends with: the next thing to do.
+ *
+ * It lives beside the scoring rather than in the page, because the page and the
+ * tools drifted apart when it lived in only one of them: chat said "not ready"
+ * and stopped, while the page named the blocker to clear.
+ */
+export function nextAction(report: ReadinessReport, denied: boolean): string {
+  if (report.verdict === "unverified") {
+    return denied
+      ? "Ask a site admin to check the app's Teamwork Graph scopes, then refresh."
+      : "No work items were found for this version. Check that the version name is exact and that work items carry it as a fix version.";
+  }
+
+  const firstBlocker = report.riskFactors.find((factor) => factor.severity === "blocker");
+  if (firstBlocker) {
+    const where = firstBlocker.workItemKey === undefined ? "" : ` on ${firstBlocker.workItemKey}`;
+    const rest = report.counts.blockers - 1;
+    const tail = rest > 0 ? ` ${rest} more blocker${rest === 1 ? "" : "s"} ${rest === 1 ? "remains" : "remain"} beyond it.` : "";
+    return `Clear "${firstBlocker.title}"${where} first, then refresh.${tail}`;
+  }
+
+  if (report.verdict === "ship_with_risk") {
+    return "Nothing is blocking, but the warnings below are still open. Either accept them explicitly or close them before announcing the release.";
+  }
+
+  return "No blockers and no warnings. Draft the release notes from the completed work items and ship.";
+}
+
 /** Shared by every tool so all of them speak the same sentence. */
-export function summarise(report: ReadinessReport, ctx: ReleaseContext): string {
+export function summarise(report: ReadinessReport, ctx: ReleaseContext, denied = false): string {
   const { verdict, score, counts } = report;
+  const action = nextAction(report, denied);
 
   if (verdict === "unverified") {
-    return `I found no work items in scope for ${ctx.projectKey} ${ctx.versionName} in the data I could read, so I cannot say whether it is ready. This is unknown, not clear.`;
+    return `I found no work items in scope for ${ctx.projectKey} ${ctx.versionName} in the data I could read, so I cannot say whether it is ready. This is unknown, not clear. ${action}`;
   }
 
   const blockerPart =
@@ -206,5 +236,5 @@ export function summarise(report: ReadinessReport, ctx: ReleaseContext): string 
         ? `${ctx.projectKey} ${ctx.versionName} can ship, but with open risk.`
         : `${ctx.projectKey} ${ctx.versionName} is not ready to ship.`;
 
-  return `${head} Score ${score}/100, ${blockerPart}. ${counts.done}/${counts.workItems} work items done.`;
+  return `${head} Score ${score}/100, ${blockerPart}. ${counts.done}/${counts.workItems} work items done. ${action}`;
 }

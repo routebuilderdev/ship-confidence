@@ -30,6 +30,16 @@ describe("scoreReadiness", () => {
     expect(summarise(report, context())).toContain("unknown, not clear");
   });
 
+  it("ends the summary with the same next action the page shows", () => {
+    const report = scoreReadiness(
+      context({ workItems: [doneItem, { ...doneItem, key: "SHIP-2", status: "in_progress" }] }),
+    );
+
+    expect(report.verdict).toBe("do_not_ship");
+    // Chat must name what to clear, not stop at "not ready": the page already did.
+    expect(summarise(report, context())).toContain('Clear "SHIP-2 is not done" on SHIP-2 first, then refresh.');
+  });
+
   it("gives a clean release a full score", () => {
     const report = scoreReadiness(context({ workItems: [doneItem, { ...doneItem, key: "SHIP-2" }] }));
     expect(report).toMatchObject({ verdict: "ship", score: 100 });

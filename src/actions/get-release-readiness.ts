@@ -11,10 +11,11 @@ import { answerReleaseQuestion, defaultDeps, type Deps } from "../tools/release-
 export async function run(payload: unknown, deps: Deps = defaultDeps()): Promise<ToolResult> {
   return answerReleaseQuestion(payload, deps, (loaded, request) => {
     const report = scoreReadiness(loaded.context);
+    const denied = loaded.coverage.some((entry) => entry.status === "not_permitted");
 
     return buildResult({
       ok: report.verdict !== "unverified",
-      summary: summarise(report, loaded.context),
+      summary: summarise(report, loaded.context, denied),
       coverage: loaded.coverage,
       warnings: loaded.warnings,
       data: {

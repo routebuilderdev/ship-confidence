@@ -23,6 +23,12 @@ Six read-only tools over the Teamwork Graph:
 | `draft-release-notes` | markdown notes from completed work items |
 | `compare-releases` | why one version scores worse than another, factor by factor |
 
+## Install
+
+**[Install Ship Confidence](https://routebuilderdev.github.io/ship-confidence/)** — Jira only.
+Then have a site admin enable the tools under Administration → Apps → Sites →
+Connected apps. See `SETUP.md` for the full walkthrough.
+
 ## Run the checks
 
 ```bash

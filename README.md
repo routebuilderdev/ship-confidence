@@ -7,6 +7,11 @@ get a verdict, the reasons, and the gaps in what could be read.
 The same logic also renders as a **Jira project page**, so a release manager can see
 the verdict without an AI client. One domain layer, two surfaces.
 
+[![A Jira version scored 59/100 and marked do-not-ship, with the blocker named](assets/demo-thumbnail.jpg)](https://youtu.be/Ou68bXcK-PE)
+
+A narrated 91-second walkthrough: the verdict, the blocker behind it, and the same
+answer arriving in a chat client. **[Watch on YouTube](https://youtu.be/Ou68bXcK-PE)**
+
 Six read-only tools over the Teamwork Graph:
 
 | Tool | Answers |
@@ -96,6 +101,12 @@ src/resolvers/  project-page resolver (versions + one score)
 src/frontend/   UI Kit page and its pure view model
 skills/         SKILL.md an agent can load to use the tools well
 ```
+
+## License
+
+GNU Affero General Public License v3.0 — see `LICENSE`. You can run, modify and
+redistribute this freely; if you run a modified version as a network service, you
+must offer its source to those users too.
 
 ## Verify before believing
 

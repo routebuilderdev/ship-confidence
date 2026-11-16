@@ -2,6 +2,7 @@
   "name": "ship-confidence",
   "version": "0.1.0",
   "private": true,
+  "license": "AGPL-3.0-only",
   "description": "Release readiness tools for Jira, exposed to AI clients over the Atlassian MCP server.",
   "scripts": {
     "typecheck": "tsc --noEmit",
